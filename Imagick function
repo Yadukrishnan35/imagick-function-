@@ -1,0 +1,93 @@
+///Controller side
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Imagick;
+
+class ImageController extends Controller
+{
+    public function compress(Request $request)
+    {
+        // Validate the request
+        $request->validate([
+            'filename' => 'required|file|mimes:jpeg,jpg,png,gif|max:10240' // max 10MB
+        ]);
+
+        // Handle the uploaded file
+        $file = $request->file('filename');
+        $path = $file->getPathname();
+        
+        try {
+            // Create an Imagick object
+            $imagick = new Imagick($path);
+
+            // Set the compression quality (0-100)
+            $imagick->setImageCompressionQuality(75);
+
+            // Compress the image
+            $imagick->stripImage(); // Remove all profiles and comments
+            $imagick->writeImage($path); // Overwrite the file
+
+            // Save the compressed image or move to desired location
+            $compressedPath = storage_path('app/public/compressed_' . $file->getClientOriginalName());
+            $imagick->writeImage($compressedPath);
+
+            // Optionally, clean up
+            $imagick->clear();
+            $imagick->destroy();
+
+            return response()->json(['message' => 'File uploaded and compressed successfully', 'path' => $compressedPath]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Image compression failed', 'message' => $e->getMessage()], 500);
+        }
+    }
+}
+
+
+//front end side
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+</head>
+<body>
+<form id="upload-form">
+  <input type="file" id="input-file-upload" name="filename">
+  <input id="submit-btn" type="submit">
+</form>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script>
+    $(document).ready(function(e) {
+        $("#upload-form").on('submit', function(event) {
+            event.preventDefault();
+            var formData = new FormData();
+            var file = $("#input-file-upload")[0].files[0];
+            formData.append('filename', file);
+
+            var csrfToken = $('meta[name="csrf-token"]').attr('content');
+
+            $.ajax({
+                url: "/compress",
+                type: "post",
+                data: formData,
+                processData: false,
+                contentType: false,
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                success: function(response) {
+                    console.log("File uploaded successfully");
+                },
+                error: function(xhr, status, error) {
+                    console.error("File upload failed:", status, error);
+                }
+            });
+        });
+    });
+</script>
+</body>
+</html>
